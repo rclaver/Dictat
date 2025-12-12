@@ -11,11 +11,11 @@ sudo apt-get install python3-pil python3-pil.imagetk
 pip3 install --user pydub speechrecognition pyaudio
 """
 
+import threading
 import tkinter as tk
 from tkinter import ttk, filedialog
 from pydub import AudioSegment
 import speech_recognition as sr
-import threading
 
 class AudioTranscriber:
    def __init__(self, root):
@@ -25,7 +25,6 @@ class AudioTranscriber:
 
       # Variables
       self.twav = "static/tmp/temp.wav"
-
       self.selected_language = tk.StringVar(value="ca-ES")  # Idioma per defecte
       self.dir_images = "static/img"
       self.images = {}
@@ -108,14 +107,14 @@ class AudioTranscriber:
       selected_language_name = self.language_combo.get()
       language_code = self.languages[selected_language_name]
       self.selected_language.set(language_code)
-      self.language_code_label.config(text=f"Codi: {language_code}")
+      #self.selected_language.config(text=f"Codi: {language_code}")
       self.status_text.set(f"Idioma cambiat a: {selected_language_name}")
 
-   '''
+   """
    Transforma un audio en text (utilitza speech_recognition)
    @type audio: AudioSource; audio d'entrada que es vol convertir a text
    @type r: Recognizer; instància de speech_recognition.Recognizer()
-   '''
+   """
    def reconeixement_d_audio(self, audio, r):
       text_reconegut = ""
       try:
@@ -140,9 +139,9 @@ class AudioTranscriber:
 
       r = sr.Recognizer()
       with sr.Microphone() as source:
-          audio = r.adjust_for_ambient_noise(source)
-          audio = r.listen(source, timeout=timeout, phrase_time_limit=time_limit)
-          with open(self.twav, "wb") as f:
+         r.adjust_for_ambient_noise(source)
+         audio = r.listen(source, timeout=timeout, phrase_time_limit=time_limit)
+         with open(self.twav, "wb") as f:
             f.write(audio.get_wav_data())
 
       song = AudioSegment.from_wav(self.twav)
@@ -158,7 +157,7 @@ class AudioTranscriber:
 
       r = sr.Recognizer()
       with sr.Microphone() as source:
-         audio = r.adjust_for_ambient_noise(source)
+         r.adjust_for_ambient_noise(source)
          audio = r.listen(source, timeout=timeout, phrase_time_limit=time_limit)
 
       text_reconegut = self.reconeixement_d_audio(audio, r)
