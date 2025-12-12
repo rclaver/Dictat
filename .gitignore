@@ -1,0 +1,13 @@
+~*
+*.*~
+*.pyc
+*.mp3
+*.wav
+*.tsv
+*.cfg
+__pycache__/
+.htaccess
+.env
+.venv
+.spyproject
+.flaskenv
