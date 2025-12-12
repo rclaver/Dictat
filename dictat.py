@@ -11,13 +11,11 @@ sudo apt-get install python3-pil python3-pil.imagetk
 pip3 install --user pydub speechrecognition pyaudio
 """
 
-import os
 import tkinter as tk
 from tkinter import ttk, filedialog
 from pydub import AudioSegment
 import speech_recognition as sr
 import threading
-
 
 class AudioTranscriber:
    def __init__(self, root):
@@ -28,16 +26,9 @@ class AudioTranscriber:
       # Variables
       self.twav = "static/tmp/temp.wav"
 
-      self.audio_file_path = tk.StringVar()
-      self.audio_file = tk.StringVar()
-      self.transcription_text = tk.StringVar()
       self.selected_language = tk.StringVar(value="ca-ES")  # Idioma per defecte
-      self.base_dir = "/home/rafael/projectes/Dictat"
       self.dir_images = "static/img"
       self.images = {}
-      self.registre = tk.StringVar()
-      self.nou_registre = None
-      self.espera = True
       self.default_state = "Fes clic al micròfon"
       self.status_text = tk.StringVar(value=self.default_state)
       self.languages = {
@@ -162,7 +153,7 @@ class AudioTranscriber:
    Genera un text a partir de la veu captada pel micròfon
    '''
    def escolta_microfon(self):
-      timeout = 0    #temps que espera a sentir veu abans de generar una Excepció
+      timeout = 3    #temps que espera a sentir veu abans de generar una Excepció
       time_limit = 20  # nombre de segons de temps per poder dir la frase
 
       r = sr.Recognizer()
@@ -186,21 +177,18 @@ class AudioTranscriber:
       """Actualitza l'interfase amb el resultat del reconeixement de veu"""
       if text:
          self.text_area.insert(1.0, text)
-
       self.status_text.set(status)
 
    def clear_all(self):
       """Neteja tota l'interfase"""
       self.text_area.delete(1.0, tk.END)
-      self.nou_registre = None
       self.status_text.set(self.default_state)
 
    def save_text(self):
       """Desa la transcripció en un arxiu de text"""
       text = self.text_area.get(1.0, tk.END).strip()
       if not text:
-         self.status_text.set("Error: No hi ha text per desar")
-         self.espera = False
+         self.status_text.set("No hi ha text per desar")
          return
 
       # Diàlog per definir la ruta i nom de l'arxiu a desar
@@ -209,25 +197,14 @@ class AudioTranscriber:
          defaultextension=".txt",
          filetypes=[("Arxius de text", "*.txt"), ("Tots els arxius", "*.*")]
       )
-
       if file_path:
          try:
             with open(file_path, 'w', encoding='utf-8') as file:
                file.write(text)
             self.status_text.set(f"Transcripció desada a: {file_path}")
-            self.espera = False
          except Exception as e:
             self.status_text.set(f"Error en desar: {str(e)}")
 
-   """
-   Desa a l'arxiu de text
-   """
-   def desa_configuracio(self, text, arxiu):
-      try:
-         with open(arxiu, 'w', encoding='utf-8') as f:
-            f.write(text)
-      except Exception as e:
-         self.status_text.set(f"Error en escriure l'arxiu: {str(e)}")
 
 def main():
    root = tk.Tk()
