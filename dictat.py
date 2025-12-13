@@ -8,13 +8,13 @@
 Instalació prèvia:
 sudo apt-get install python-tk
 sudo apt-get install python3-pil python3-pil.imagetk
-pip3 install --user pydub speechrecognition pyaudio
+pip3 install --user pydub speechrecognition
 """
 
 import threading
+import queue
 import tkinter as tk
 from tkinter import ttk, filedialog
-from pydub import AudioSegment
 import speech_recognition as sr
 
 class AudioTranscriber:
@@ -24,8 +24,7 @@ class AudioTranscriber:
       self.root.minsize(800, 600)
 
       # Variables
-      self.twav = "static/tmp/temp.wav"
-      self.selected_language = tk.StringVar(value="ca-ES")  # Idioma per defecte
+      self.selected_language = tk.StringVar(value="es-ES")  # Idioma per defecte
       self.dir_images = "static/img"
       self.images = {}
       self.default_state = "Fes clic al micròfon"
@@ -35,12 +34,20 @@ class AudioTranscriber:
          "Español": "es-ES",
          "English": "en-US"
       }
+      # Variables para el control del hilo
+      self.escolta = False
+      self.audio_queue = queue.Queue()
+      self.text_queue = queue.Queue()
+      self.recognizer_thread = None
 
       self.carrega_imatges()
       self.create_widgets()
+      # Iniciar el proceso de verificación de resultados
+      self.verifica_resultats()
 
    def carrega_imatges(self):
-      self.images['micro'] = tk.PhotoImage(file=f"{self.dir_images}/microfon.png")
+      self.images['micro_on'] = tk.PhotoImage(file=f"{self.dir_images}/micro_on.png")
+      self.images['micro_off'] = tk.PhotoImage(file=f"{self.dir_images}/micro_off.png")
       self.images['clear'] = tk.PhotoImage(file=f"{self.dir_images}/clear.png")
       self.images['save'] = tk.PhotoImage(file=f"{self.dir_images}/save.png")
       self.images['exit'] = tk.PhotoImage(file=f"{self.dir_images}/exit.png")
@@ -93,7 +100,7 @@ class AudioTranscriber:
       button_frame = ttk.Frame(main_frame)
       button_frame.grid(row=4, column=0, columnspan=3, sticky=tk.N, pady=(15,0))
 
-      ttk.Button(button_frame, image=self.images['micro'], command=self.inici_gravació).pack(side=tk.LEFT, padx=5)
+      self.micro_button = ttk.Button(button_frame, image=self.images['micro_off'], command=self.control_microfon).pack(side=tk.LEFT, padx=5)
       ttk.Button(button_frame, image=self.images['clear'], command=self.clear_all).pack(side=tk.LEFT, padx=5)
       ttk.Button(button_frame, image=self.images['save'], command=self.save_text).pack(side=tk.LEFT, padx=5)
       ttk.Button(button_frame, image=self.images['exit'], command=self.root.destroy).pack(side=tk.LEFT, padx=(10,0))
@@ -103,79 +110,107 @@ class AudioTranscriber:
 
 
    def on_language_change(self, event):
-      """Actualitza l'etiqueta del codi d'idioma quan canvia la selecció"""
+      '''Actualitza l'etiqueta del codi d'idioma quan canvia la selecció'''
       selected_language_name = self.language_combo.get()
       language_code = self.languages[selected_language_name]
       self.selected_language.set(language_code)
-      #self.selected_language.config(text=f"Codi: {language_code}")
       self.status_text.set(f"Idioma cambiat a: {selected_language_name}")
+      self.root.after(100, self.verifica_resultats)
 
-   """
+   def control_microfon(self):
+      '''Inicia o deté l'escolta del micròfon'''
+      if not self.escolta:
+         '''Inicia el procés de gravació en un fil separat'''
+         self.escolta = True
+         self.status_text.set(f"Escoltant [{self.language_combo.get()}]")
+         self.micro_button.config(image=self.images['micro_on'])
+
+         # Executar en un fil separat per a no bloquejar l'interfase
+         self.recognizer_thread = threading.Thread(target=self.escolta_microfon, daemon = True)
+         self.recognizer_thread.start()
+      else:
+         '''Deté la gravació'''
+         self.escolta = False
+         self.micro_button.config(image=self.images['micro_off'])
+
+         if self.recognizer_thread and self.recognizer_thread.is_alive():
+            self.recognizer_thread.join(timeout=1)
+         self.status_text.set(self.default_state)
+
+   def escolta_microfon(self):
+      '''Genera un text a partir de la veu captada pel micròfon'''
+      timeout = 1    #temps que espera a sentir veu abans de generar una Excepció
+      time_limit = 5  # nombre de segons de temps per poder dir la frase
+
+      r = sr.Recognizer()
+      with sr.Microphone() as source:
+         r.adjust_for_ambient_noise(source, duration=timeout)
+
+         while self.escolta:
+            try:
+               audio = r.listen(source, timeout=timeout, phrase_time_limit=time_limit)
+               # Processar l'àudio en un altre fir per no bloquejar la captura
+               threading.Thread(
+                  target=self.reconeixement_d_audio,
+                  args=(audio, r),
+                  daemon=True
+               ).start()
+
+            except sr.WaitTimeoutError:
+               # Timeout esperando voz, continuar escuchando
+               continue
+            except Exception as e:
+               self.root.after(0, self.actualitza_estat, f"Error: {str(e)}")
+               break
+
+   '''
    Transforma un audio en text (utilitza speech_recognition)
    @type audio: AudioSource; audio d'entrada que es vol convertir a text
    @type r: Recognizer; instància de speech_recognition.Recognizer()
-   """
+   '''
    def reconeixement_d_audio(self, audio, r):
       text_reconegut = ""
       try:
          # Google Speech Recognition. For testing purposes, we're just using the default API key
          # to use another API key, use `r.recognize_google(audio, key="GOOGLE_SPEECH_RECOGNITION_API_KEY")`
          text_reconegut = r.recognize_google(audio, language=self.selected_language.get())
+         text_processat = self.processamet_de_text(text_reconegut)
+         # Envia el text a la cua per que el fil principal el processi
+         self.text_queue.put(text_processat)
+
       except sr.UnknownValueError:
-         self.root.after(0, self.actualitza_estat, "", f"Error: No he pogut entendre l'àudio [{self.language_combo.get()}]")
+         self.root.after(0, self.actualitza_estat, f"No he pogut entendre l'àudio [{self.language_combo.get()}]")
       except sr.RequestError as e:
-         self.root.after(0, self.actualitza_estat, "", f"Error en el servei: {str(e)}")
+         self.root.after(0, self.actualitza_estat, f"Error en el servei: {str(e)}")
       except Exception as e:
-         self.root.after(0, self.actualitza_estat, "", f"Error inesperat: {str(e)}")
+         self.root.after(0, self.actualitza_estat, f"Error inesperat: {str(e)}")
 
       return text_reconegut
 
-   '''
-   Genera un text a partir de la veu captada pel micròfon
-   '''
-   def escolta_microfon_wav(self):
-      timeout = 0    #temps que espera a sentir veu abans de generar una Excepció
-      time_limit = 0  # nombre de segons de temps per poder dir la frase
+   def processamet_de_text(self, text):
+      text = text.replace(" punto y coma ", "; ")
+      text = text.replace(" punto ", ". ")
+      text = text.replace(" coma ", ", ")
+      text = text.replace(" abre paréntesis ", " (")
+      text = text.replace(" cierra paréntesis ", ") ")
+      return text
 
-      r = sr.Recognizer()
-      with sr.Microphone() as source:
-         r.adjust_for_ambient_noise(source)
-         audio = r.listen(source, timeout=timeout, phrase_time_limit=time_limit)
-         with open(self.twav, "wb") as f:
-            f.write(audio.get_wav_data())
+   def verifica_resultats(self):
+      '''Verifica periódicament si hi ha nous textos reconeguts'''
+      try:
+         while not self.text_queue.empty():
+            text = self.text_queue.get_nowait()
+            self.text_area.insert(tk.END, text + " ")
+            # desplaçament al final
+            self.text_area.see(tk.END)
+      except queue.Empty:
+         pass
 
-      song = AudioSegment.from_wav(self.twav)
-      text_reconegut = self.reconeixement_d_audio(song, r)
-      self.root.after(0, self.actualitza_estat, text_reconegut, "activa el microfon")
+      # Programar pròxima verificació
+      self.root.after(100, self.verifica_resultats)
 
-   '''
-   Genera un text a partir de la veu captada pel micròfon
-   '''
-   def escolta_microfon(self):
-      timeout = 3    #temps que espera a sentir veu abans de generar una Excepció
-      time_limit = 20  # nombre de segons de temps per poder dir la frase
-
-      r = sr.Recognizer()
-      with sr.Microphone() as source:
-         r.adjust_for_ambient_noise(source)
-         audio = r.listen(source, timeout=timeout, phrase_time_limit=time_limit)
-
-      text_reconegut = self.reconeixement_d_audio(audio, r)
-      self.root.after(0, self.actualitza_estat, text_reconegut, "activa el microfon")
-
-   def inici_gravació(self):
-      """Inicia el procés de gravació en un fil separat"""
-      self.status_text.set(f"Escoltant [{self.language_combo.get()}]")
-
-      # Executar en un fil separat per a no bloquejar l'interfase
-      thread = threading.Thread(target=self.escolta_microfon)
-      thread.daemon = True
-      thread.start()
-
-   def actualitza_estat(self, text, status):
+   def actualitza_estat(self, status):
       """Actualitza l'interfase amb el resultat del reconeixement de veu"""
-      if text:
-         self.text_area.insert(1.0, text)
       self.status_text.set(status)
 
    def clear_all(self):
