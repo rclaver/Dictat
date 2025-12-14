@@ -24,9 +24,10 @@ class AudioTranscriber:
       self.root.minsize(800, 600)
 
       # Variables
-      self.selected_language = tk.StringVar(value="es-ES")  # Idioma per defecte
+      self.selected_language = tk.StringVar(value="Español")  # Idioma per defecte
       self.dir_images = "static/img"
       self.images = {}
+      self.micro_button = None
       self.default_state = "Fes clic al micròfon"
       self.status_text = tk.StringVar(value=self.default_state)
       self.languages = {
@@ -69,7 +70,7 @@ class AudioTranscriber:
       # Selector d'idioma
       ttk.Label(main_frame, text="Idioma:", font=("Arial",9,"bold")).grid(row=2, column=0, sticky=(tk.N,tk.W), pady=(5,10))
       language_frame = ttk.Frame(main_frame)
-      language_frame.grid(row=2, column=1, sticky=(tk.N,tk.W), pady=(5,10))
+      language_frame.grid(row=2, column=1, columnspan=2, sticky=(tk.N, tk.W, tk.W), pady=(5,10))
       language_frame.columnconfigure(0, weight=1)
 
       # Combobox per seleccionar idioma
@@ -78,10 +79,19 @@ class AudioTranscriber:
          values=list(self.languages.keys()),
          state="readonly",
          font=("Arial",9),
-         width=12
+         width=16
       )
-      self.language_combo.grid(row=0, column=0, sticky=tk.W, padx=0)
-      self.language_combo.set("Català")  # Valor per defecte
+      self.language_combo.grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+      #self.language_combo.set("Català")  # Valor per defecte
+
+      # Etiqueta que mostra el codi de l'idioma seleccionat
+      self.idioma_actiu = ttk.Label(
+         language_frame,
+         text=f"idioma actiu: {self.selected_language.get()}",
+         font=("Arial", 9),
+         foreground="#0000a0"
+      )
+      self.idioma_actiu.grid(row=0, column=1, sticky=tk.W)
 
       # Vincular l'event de canvi de selecció
       self.language_combo.bind('<<ComboboxSelected>>', self.on_language_change)
@@ -100,7 +110,8 @@ class AudioTranscriber:
       button_frame = ttk.Frame(main_frame)
       button_frame.grid(row=4, column=0, columnspan=3, sticky=tk.N, pady=(15,0))
 
-      self.micro_button = ttk.Button(button_frame, image=self.images['micro_off'], command=self.control_microfon).pack(side=tk.LEFT, padx=5)
+      self.micro_button = ttk.Button(button_frame, image=self.images['micro_off'], command=self.control_microfon)
+      self.micro_button.pack(side=tk.LEFT, padx=5)
       ttk.Button(button_frame, image=self.images['clear'], command=self.clear_all).pack(side=tk.LEFT, padx=5)
       ttk.Button(button_frame, image=self.images['save'], command=self.save_text).pack(side=tk.LEFT, padx=5)
       ttk.Button(button_frame, image=self.images['exit'], command=self.root.destroy).pack(side=tk.LEFT, padx=(10,0))
@@ -112,8 +123,8 @@ class AudioTranscriber:
    def on_language_change(self, event):
       '''Actualitza l'etiqueta del codi d'idioma quan canvia la selecció'''
       selected_language_name = self.language_combo.get()
-      language_code = self.languages[selected_language_name]
-      self.selected_language.set(language_code)
+      self.selected_language.set(selected_language_name)
+      self.idioma_actiu.config(text=f"idioma actiu: {selected_language_name}")
       self.status_text.set(f"Idioma cambiat a: {selected_language_name}")
       self.root.after(100, self.verifica_resultats)
 
@@ -122,7 +133,7 @@ class AudioTranscriber:
       if not self.escolta:
          '''Inicia el procés de gravació en un fil separat'''
          self.escolta = True
-         self.status_text.set(f"Escoltant [{self.language_combo.get()}]")
+         self.status_text.set(f"Escoltant [{self.selected_language.get()}]")
          self.micro_button.config(image=self.images['micro_on'])
 
          # Executar en un fil separat per a no bloquejar l'interfase
@@ -173,7 +184,7 @@ class AudioTranscriber:
       try:
          # Google Speech Recognition. For testing purposes, we're just using the default API key
          # to use another API key, use `r.recognize_google(audio, key="GOOGLE_SPEECH_RECOGNITION_API_KEY")`
-         text_reconegut = r.recognize_google(audio, language=self.selected_language.get())
+         text_reconegut = r.recognize_google(audio, language=self.languages[self.selected_language.get()])
          text_processat = self.processamet_de_text(text_reconegut)
          # Envia el text a la cua per que el fil principal el processi
          self.text_queue.put(text_processat)
