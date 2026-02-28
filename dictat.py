@@ -160,7 +160,7 @@ class AudioTranscriber:
          while self.escolta:
             try:
                audio = r.listen(source, timeout=timeout, phrase_time_limit=time_limit)
-               # Processar l'àudio en un altre fir per no bloquejar la captura
+               # Processar l'àudio en un altre fil per no bloquejar la captura
                threading.Thread(
                   target=self.reconeixement_d_audio,
                   args=(audio, r),
